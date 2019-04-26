@@ -1,0 +1,180 @@
+#!/usr/bin/swift
+
+import Foundation
+
+func main(arguments: [String]) throws {
+    guard arguments.count > 2 else {
+        printHelp()
+        return
+    }
+
+    switch arguments[1] {
+    case "copyhome":
+        guard arguments.count >= 4 else { throw SimulatorError.notEnoughParameters }
+        guard let sourceUDID = UUID(uuidString: arguments[2]) else { throw SimulatorError.sourceIsNotAnUDID }
+        guard let targetUDID = UUID(uuidString: arguments[3]) else { throw SimulatorError.targetIsNotanUDID }
+        try copyHomeData(from: sourceUDID, to: targetUDID)
+    case "spreadhome":
+        guard arguments.count >= 3 else { throw SimulatorError.notEnoughParameters }
+        let deviceName = arguments.suffix(from: 2).joined(separator: " ")
+        try spread(from: deviceName)
+    default:
+        printHelp()
+    }
+}
+
+//MARK: Commands
+
+func printHelp() {
+    print("""
+Use this tool to copy the HomeKit Configurations between iOS simulators.
+
+    simcopy help
+        Prints this help.
+
+    simcopy copyhome <sourceUDID> <targetUDID>
+        Copies the HomeKit configuration and KeyChain from one simulator to the other.
+
+    simcopy spreadhome <devicename>
+        Copies the HomeKit configuration from the simulator with the specified name to all simulators with the same runtime (OS version).
+""")
+}
+
+
+func copyHomeData(from sourceUDID: UUID, to targetUDID: UUID) throws {
+    let relativePathsToCopy = ["data/Library/homed", "data/Library/Keychains"]
+    let manager = FileManager()
+    for path in relativePathsToCopy {
+        let source = URL(fileURLWithPath: path, isDirectory: true, relativeTo: simulatorURL(udid: sourceUDID))
+        let target = URL(fileURLWithPath: path, isDirectory: true, relativeTo: simulatorURL(udid: targetUDID))
+        print("Copying \(source.absoluteString) to \(target.absoluteString)")
+        try manager.removeItem(at: target)
+        try manager.copyItem(at: source, to: target)
+    }
+}
+
+func spread(from deviceName: String) throws {
+
+    let simulatorControl = try getSimulatorControl()
+
+    for (runtimeIdentifier, devices) in simulatorControl.devices {
+        let runtime = simulatorControl.runtimes.first(where: {$0.identifier == runtimeIdentifier})
+        let sources = devices.filter{ $0.name == deviceName }
+        if sources.count > 1 { throw SimulatorError.multipleDevicesFound }
+        if let source = sources.first {
+            let targets = devices.filter{ $0 != source }
+            for target in targets {
+                print("Copying Home Setup from \(source.name) to \(target.name) (\(runtime?.name ?? runtimeIdentifier))")
+                try copyHomeData(from: source.udid, to: target.udid)
+            }
+        }
+    }
+}
+
+//MARK: Helpers
+
+func getSimulatorControl() throws -> SimulatorControl {
+    let jsonData = shell("xcrun simctl list -j")
+    return try JSONDecoder().decode(SimulatorControl.self, from: jsonData)
+}
+
+func shell(_ command: String) -> Data {
+    let task = Process()
+    task.launchPath = "/bin/bash"
+    task.arguments = ["-c", command]
+
+    let pipe = Pipe()
+    task.standardOutput = pipe
+    task.launch()
+
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    return data
+}
+
+func simulatorURL(udid: UUID) -> URL {
+    let userHome = FileManager().homeDirectoryForCurrentUser
+    return URL(fileURLWithPath: "Library/Developer/CoreSimulator/Devices/" + udid.uuidString, isDirectory: true, relativeTo: userHome)
+}
+
+//MARK: JSON Data Structure
+
+struct SimulatorControl: Decodable {
+    let devicetypes: [Devicetype]
+    let runtimes: [Runtime]
+    let devices: [String: [Device]]
+    let pairs: [String: Pair]
+}
+
+struct Runtime: Decodable {
+    let identifier: String
+    let availabilityError: String
+    let buildversion: String
+    let availability: String
+    let isAvailable: Bool
+    let version: String
+    let name: String
+}
+
+struct Device: Decodable, Equatable {
+    let availability: String
+    let state: String //Should be an enum at some point
+    let isAvailable: Bool
+    let name: String
+    let udid: UUID
+    let availabilityError: String
+}
+
+struct Pair: Decodable {
+    let watch: PairedDevice
+    let phone: PairedDevice
+    let state: String
+}
+
+struct PairedDevice: Decodable {
+    let name: String
+    let udid: UUID
+    let state: String
+}
+
+struct Devicetype: Decodable {
+    let name: String
+    let bundlePath: String
+    let identifier: String
+}
+
+//MARK: Error Handling
+
+enum SimulatorError: LocalizedError {
+    //This is super lazy: There should be localized descriptions for LocalizedError, attached data, etc. Feel free to add it.
+    case runtimeNotFound, multipleRuntimesFound, deviceNotFound, multipleDevicesFound, noDevicesForRuntime
+    case notEnoughParameters, sourceIsNotAnUDID, targetIsNotanUDID
+}
+
+func handleError(_ error: Error) {
+    //This could be made WAY more sophisticated, but it the JSON as of now, so 🤷‍♂️
+    if let error = error as? DecodingError {
+        switch error {
+        case .typeMismatch(_, _):
+            print("Type Mismatch")
+        case .valueNotFound(_, _):
+            print("Value Not Found")
+        case .keyNotFound(let key, _):
+            print("Key Not Found: \(key)")
+        case .dataCorrupted(_):
+            print("Data Corruptedh")
+        @unknown default:
+            print("Unknown Decoding Error: \(error.localizedDescription)")
+        }
+    } else {
+        print("An Error occurred: \(error.localizedDescription)")
+    }
+}
+
+//MARK: Actually run something
+
+do {
+    try main(arguments: CommandLine.arguments)
+} catch {
+    handleError(error)
+}
+
