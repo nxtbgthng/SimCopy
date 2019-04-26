@@ -1,12 +1,12 @@
 # SimCopy
 
-This is a small command line utility that's been written out of a need to synchronize HomeKit configurations between iOS simulators.
+This is a small command line utility (*written in Swift!*) that's been written out of a need to synchronize HomeKit configurations between iOS simulators.
 
 If you run the HomeKit Simulator (available from `Xcode -> Open Develoepr Tool -> More Developer Tools…` ) on the same machine as the iOS Simulator, you can actually add simulated HomeKit devices to the simultor and test your app there! 🎉
 
-But there's a catch: Each simulator is a new device, and needs a new connection to the simulated HomeKit devices. However: A HomeKit device can only be added once and then it needs to reset. So the solution is to copy the HomeKit configuration (that's *homed* and *KeyChain*) to all the other simulators once you have configured it for one. I couldn't find anything doing this, so I wrote a little tool.
+*But there's a catch*: Each simulator is a new device, and needs a new connection to the simulated HomeKit devices. However: A HomeKit device can only be added once and then it needs to reset. So the solution is to copy the HomeKit configuration (that's *homed* and *KeyChain*) to all the other simulators once you have configured it for one. I couldn't find anything doing this, so I wrote a little tool.
 
-** Note: This is only as sophisticated as I needed it, and can be improved on versatility, robustness and error handling. Feel free to fork send a Pull Request if you want to extend it**
+**Note: This is only as sophisticated as I needed it, and can be improved on versatility, robustness and error handling. Feel free to fork send a Pull Request if you want to extend it**
 
 Here's how to use it:
 
