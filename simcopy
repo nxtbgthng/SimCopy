@@ -3,7 +3,7 @@
 import Foundation
 
 func main(arguments: [String]) throws {
-    guard arguments.count > 2 else {
+    guard arguments.count >= 2 else {
         printHelp()
         return
     }
@@ -39,7 +39,6 @@ Use this tool to copy the HomeKit Configurations between iOS simulators.
         Copies the HomeKit configuration from the simulator with the specified name to all simulators with the same runtime (OS version).
 """)
 }
-
 
 func copyHomeData(from sourceUDID: UUID, to targetUDID: UUID) throws {
     let relativePathsToCopy = ["data/Library/homed", "data/Library/Keychains"]
