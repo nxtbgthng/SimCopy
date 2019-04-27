@@ -41,9 +41,9 @@ Use this tool to copy the HomeKit Configurations between iOS simulators.
 }
 
 func copyHomeData(from sourceUDID: UUID, to targetUDID: UUID) throws {
-    let relativePathsToCopy = ["data/Library/homed", "data/Library/Keychains"]
     let manager = FileManager()
-    for path in relativePathsToCopy {
+
+    for path in relativeHomePaths() {
         let source = URL(fileURLWithPath: path, isDirectory: true, relativeTo: simulatorURL(udid: sourceUDID))
         let target = URL(fileURLWithPath: path, isDirectory: true, relativeTo: simulatorURL(udid: targetUDID))
         print("Copying \(source.absoluteString) to \(target.absoluteString)")
@@ -61,6 +61,19 @@ func spread(from deviceName: String) throws {
         let sources = devices.filter{ $0.name == deviceName }
         if sources.count > 1 { throw SimulatorError.multipleDevicesFound }
         if let source = sources.first {
+
+            //Find out if the source exists. The existence API of Filemanager in Swift is awkward, but writing an extension for a "script" is also not ideal. So If you have an idea how to make it more elegant in-line, feel free to do so.
+            let manager = FileManager()
+            for path in relativeHomePaths() {
+                let url = URL(fileURLWithPath: path, isDirectory: true, relativeTo: simulatorURL(udid: source.udid))
+                var isDirectory: ObjCBool = false
+                let exists = manager.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                if !exists || !isDirectory.boolValue {
+                    print("Directory \(url.absoluteString) does not exist or is not a directory, so skipping spreading home data from \(source.name) to \(runtime?.name ?? runtimeIdentifier) simulators.")
+                    return
+                }
+            }
+
             let targets = devices.filter{ $0 != source }
             for target in targets {
                 print("Copying Home Setup from \(source.name) to \(target.name) (\(runtime?.name ?? runtimeIdentifier))")
@@ -72,6 +85,7 @@ func spread(from deviceName: String) throws {
 
 //MARK: Helpers
 
+/// Generates a `SimulatorControl` object that represents the output of `xcrun simctl list -j`. To understand the structure, have a look at that command.
 func getSimulatorControl() throws -> SimulatorControl {
     let jsonData = shell("xcrun simctl list -j")
     return try JSONDecoder().decode(SimulatorControl.self, from: jsonData)
@@ -93,6 +107,12 @@ func shell(_ command: String) -> Data {
 func simulatorURL(udid: UUID) -> URL {
     let userHome = FileManager().homeDirectoryForCurrentUser
     return URL(fileURLWithPath: "Library/Developer/CoreSimulator/Devices/" + udid.uuidString, isDirectory: true, relativeTo: userHome)
+}
+
+/// The Paths inside the simulator directory that need to be copied for home data
+// - Note: if we make that a 'let' the functions cann't access it from a script. That seems to different from a playground.
+func relativeHomePaths() -> [String] {
+    return ["data/Library/homed", "data/Library/Keychains"]
 }
 
 //MARK: JSON Data Structure
@@ -150,7 +170,7 @@ enum SimulatorError: LocalizedError {
 }
 
 func handleError(_ error: Error) {
-    //This could be made WAY more sophisticated, but it the JSON as of now, so 🤷‍♂️
+    //This could be WAY more sophisticated, but it parses the JSON as of now, so 🤷‍♂️
     if let error = error as? DecodingError {
         switch error {
         case .typeMismatch(_, _):
